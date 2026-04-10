@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>5x5 Wall Selector</title>
+  <style>
+    :root {
+      --bg: #f7f7fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --grid: #111827;
+      --wall: #d1d5db;
+      --selected: #dc2626;
+      --label: #2563eb;
+      --button: #111827;
+      --button-text: #ffffff;
+      --input-border: #d1d5db;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 900px;
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      padding: 24px;
+    }
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 28px;
+    }
+
+    p {
+      margin-top: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 16px;
+      background: var(--button);
+      color: var(--button-text);
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    button:hover {
+      opacity: 0.92;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 280px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--input-border);
+      font-size: 15px;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .selected-box {
+      margin: 12px 0 18px;
+      padding: 12px 14px;
+      background: #f3f4f6;
+      border-radius: 12px;
+      font-family: monospace;
+      font-size: 15px;
+      overflow-wrap: anywhere;
+    }
+
+    .canvas-wrap {
+      display: flex;
+      justify-content: center;
+      background: #fff;
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+    }
+
+    canvas {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .hint {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>5×5 Wall Selector</h1>
+
+    <div class="controls">
+      <div class="row">
+        <button id="randomBtn">Pick 10 Random Walls</button>
+        <button id="drawBtn">Draw Entered Walls</button>
+        <label>
+          <input type="checkbox" id="showNumbers" checked />
+          Show wall numbers
+        </label>
+      </div>
+
+      <div class="row">
+        <input
+          id="wallInput"
+          type="text"
+          placeholder="Enter wall numbers, e.g. 1, 4, 5, 9, 14, 22, 31, 37, 39, 40"
+        />
+      </div>
+    </div>
+
+    <div class="selected-box" id="selectedWalls">Selected walls: []</div>
+
+    <div class="canvas-wrap">
+      <canvas id="gridCanvas" width="700" height="700"></canvas>
+    </div>
+
+    <div class="hint">
+      Valid wall numbers are 1 through 40. The numbering follows your scheme: each row gets
+      4 vertical interior walls, then 5 horizontal walls below that row, except the last row,
+      which ends with walls 37–40 as the bottom row of vertical interior walls.
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gridCanvas');
+    const ctx = canvas.getContext('2d');
+    const selectedWallsEl = document.getElementById('selectedWalls');
+    const wallInput = document.getElementById('wallInput');
+    const showNumbersCheckbox = document.getElementById('showNumbers');
+    const randomBtn = document.getElementById('randomBtn');
+    const drawBtn = document.getElementById('drawBtn');
+
+    const GRID_SIZE = 5;
+    const CELL = 110;
+    const MARGIN = 75;
+
+    let selectedWalls = pickRandomUniqueWalls(10);
+
+    function wallToSegment(wallNum) {
+      if (wallNum < 1 || wallNum > 40) {
+        throw new Error(`Wall number must be between 1 and 40. Got ${wallNum}`);
+      }
+
+      if (wallNum <= 36) {
+        const block = Math.floor((wallNum - 1) / 9);       // 0..3
+        const posInBlock = (wallNum - 1) % 9;              // 0..8
+
+        if (posInBlock < 4) {
+          const row = block;
+          const x = posInBlock + 1;
+          const y1 = GRID_SIZE - row - 1;
+          const y2 = GRID_SIZE - row;
+          return {
+            x1: x,
+            y1: y1,
+            x2: x,
+            y2: y2,
+            orientation: 'vertical'
+          };
+        }
+
+        const row = block;
+        const col = posInBlock - 4;
+        const y = GRID_SIZE - row - 1;
+        return {
+          x1: col,
+          y1: y,
+          x2: col + 1,
+          y2: y,
+          orientation: 'horizontal'
+        };
+      }
+
+      const pos = wallNum - 37; // 0..3
+      const x = pos + 1;
+      return {
+        x1: x,
+        y1: 0,
+        x2: x,
+        y2: 1,
+        orientation: 'vertical'
+      };
+    }
+
+    function toCanvasX(x) {
+      return MARGIN + x * CELL;
+    }
+
+    function toCanvasY(y) {
+      return canvas.height - (MARGIN + y * CELL);
+    }
+
+    function drawGrid(selected, showNumbers) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw squares
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 1.5;
+      for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+          ctx.strokeRect(
+            toCanvasX(col),
+            toCanvasY(row + 1),
+            CELL,
+            CELL
+          );
+        }
+      }
+
+      // Draw all valid walls
+      for (let wallNum = 1; wallNum <= 40; wallNum++) {
+        const seg = wallToSegment(wallNum);
+        const isSelected = selected.includes(wallNum);
+
+        ctx.beginPath();
+        ctx.moveTo(toCanvasX(seg.x1), toCanvasY(seg.y1));
+        ctx.lineTo(toCanvasX(seg.x2), toCanvasY(seg.y2));
+        ctx.strokeStyle = isSelected ? '#dc2626' : '#d1d5db';
+        ctx.lineWidth = isSelected ? 6 : 3;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        if (showNumbers) {
+          const mx = (toCanvasX(seg.x1) + toCanvasX(seg.x2)) / 2;
+          const my = (toCanvasY(seg.y1) + toCanvasY(seg.y2)) / 2;
+          ctx.fillStyle = '#2563eb';
+          ctx.font = '16px Arial';
+
+          if (seg.orientation === 'vertical') {
+            ctx.fillText(String(wallNum), mx + 10, my + 5);
+          } else {
+            ctx.fillText(String(wallNum), mx - 8, my - 10);
+          }
+        }
+      }
+
+      selectedWallsEl.textContent = `Selected walls: [${selected.join(', ')}]`;
+      wallInput.value = selected.join(', ');
+    }
+
+    function pickRandomUniqueWalls(count) {
+      const pool = Array.from({ length: 40 }, (_, i) => i + 1);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      return pool.slice(0, count).sort((a, b) => a - b);
+    }
+
+    function parseWallInput(text) {
+      if (!text.trim()) {
+        return [];
+      }
+
+      const parts = text
+        .split(/[^0-9]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const nums = parts.map(Number);
+
+      if (nums.some(n => !Number.isInteger(n) || n < 1 || n > 40)) {
+        throw new Error('All wall numbers must be integers from 1 to 40.');
+      }
+
+      const unique = [...new Set(nums)].sort((a, b) => a - b);
+      return unique;
+    }
+
+    randomBtn.addEventListener('click', () => {
+      selectedWalls = pickRandomUniqueWalls(10);
+      drawGrid(selectedWalls, showNumbersCheckbox.checked);
+    });
+
+    drawBtn.addEventListener('click', () => {
+      try {
+        selectedWalls = parseWallInput(wallInput.value);
+        drawGrid(selectedWalls, showNumbersCheckbox.checked);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    showNumbersCheckbox.addEventListener('change', () => {
+      drawGrid(selectedWalls, showNumbersCheckbox.checked);
+    });
+
+    drawGrid(selectedWalls, showNumbersCheckbox.checked);
+  </script>
+</body>
+</html>
